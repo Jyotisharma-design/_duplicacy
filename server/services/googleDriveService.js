@@ -1,27 +1,7 @@
 // server/services/googleDriveService.js
-const { google } = require('googleapis');
-const fs = require('fs');
-const path = require('path');
-const axios = require('axios');
+const authService = require('./authService');
 
-/**
- * Initialize Google Drive client using OAuth2 credentials from env.
- */
-function getDriveClient() {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI;
-  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
-
-  if (!clientId || !clientSecret || !refreshToken) {
-    throw new Error('Google API credentials are missing');
-  }
-
-  const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
-  oauth2Client.setCredentials({ refresh_token: refreshToken });
-
-  return google.drive({ version: 'v3', auth: oauth2Client });
-}
+const ALLOWED_MIME_PREFIX = 'image/';
 
 /**
  * Resolve shareable link to file id.
@@ -29,9 +9,17 @@ function getDriveClient() {
  * @param {string} link
  */
 function extractFileId(link) {
-  const regex = /\/d\/([a-zA-Z0-9_-]{10,})/;
-  const match = link.match(regex);
-  return match ? match[1] : null;
+  // possible patterns: /file/d/ID, /folders/ID, open?id=ID, uc?id=ID
+  const patterns = [
+    /\/d\/([a-zA-Z0-9_-]{10,})/, // file or folder
+    /\/folders\/([a-zA-Z0-9_-]{10,})/, // folder link
+    /[?&]id=([a-zA-Z0-9_-]{10,})/ // open?id or uc?id
+  ];
+  for (const regex of patterns) {
+    const match = link.match(regex);
+    if (match) return match[1];
+  }
+  return null;
 }
 
 /**
@@ -40,7 +28,7 @@ function extractFileId(link) {
  * @returns {Promise<Buffer>}
  */
 async function downloadFile(fileId) {
-  const drive = getDriveClient();
+  const drive = authService.getDriveClient();
   const res = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
   return Buffer.from(res.data);
 }
@@ -51,12 +39,21 @@ async function downloadFile(fileId) {
  * @param {string} folderId
  */
 async function listImagesInFolder(folderId) {
-  const drive = getDriveClient();
-  const { data } = await drive.files.list({
-    q: `'${folderId}' in parents and mimeType contains 'image/'`,
-    fields: 'files(id, name, mimeType, size)'
-  });
-  return data.files;
+  const drive = authService.getDriveClient();
+  const files = [];
+  let pageToken = undefined;
+  do {
+    const { data } = await drive.files.list({
+      q: `'${folderId}' in parents and mimeType contains '${ALLOWED_MIME_PREFIX}'`,
+      fields: 'nextPageToken, files(id, name, mimeType, size)',
+      spaces: 'drive',
+      pageSize: 1000,
+      pageToken
+    });
+    files.push(...data.files);
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+  return files;
 }
 
 /**
@@ -64,27 +61,35 @@ async function listImagesInFolder(folderId) {
  * @param {string} link
  */
 async function getImagesFromLink(link) {
-  // This is simplified; robust parsing is needed.
+  if (!authService.isAuthenticated()) {
+    throw new Error('Not authenticated with Google Drive');
+  }
+
   const fileId = extractFileId(link);
   if (!fileId) throw new Error('Invalid Google Drive link');
 
-  const drive = getDriveClient();
+  const drive = authService.getDriveClient();
   const { data: fileMeta } = await drive.files.get({ fileId, fields: 'id, name, mimeType' });
 
   if (fileMeta.mimeType === 'application/vnd.google-apps.folder') {
     const files = await listImagesInFolder(fileId);
     const items = [];
     for (const file of files) {
+      if (!file.mimeType.startsWith(ALLOWED_MIME_PREFIX)) continue;
       const buffer = await downloadFile(file.id);
       items.push({ buffer, filename: file.name });
     }
     return items;
   } else {
+    if (!fileMeta.mimeType.startsWith(ALLOWED_MIME_PREFIX)) {
+      throw new Error('Provided link is not an image');
+    }
     const buffer = await downloadFile(fileId);
     return [{ buffer, filename: fileMeta.name }];
   }
 }
 
 module.exports = {
-  getImagesFromLink
+  getImagesFromLink,
+  extractFileId // export for testing
 };
