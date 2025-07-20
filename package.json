@@ -1,0 +1,22 @@
+{
+  "name": "duplicate-photo-detector",
+  "version": "1.0.0",
+  "description": "Real-time duplicate photo detection tool for Google Drive",
+  "main": "server/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server:dev\" \"npm run client:dev\"",
+    "server:dev": "cd server && npm run dev",
+    "client:dev": "cd client && npm start",
+    "server:start": "cd server && npm start",
+    "client:build": "cd client && npm run build",
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
+    "build": "npm run client:build",
+    "start": "npm run server:start"
+  },
+  "keywords": ["photo", "duplicate", "detection", "google-drive", "real-time"],
+  "author": "Duplicate Photo Detector",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
