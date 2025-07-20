@@ -1,0 +1,32 @@
+{
+  "name": "duplicate-photo-detector",
+  "version": "0.1.0",
+  "description": "Web-based tool for detecting duplicate photos in Google Drive with real-time updates.",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "nodemon server/index.js"
+  },
+  "keywords": [
+    "google-drive",
+    "duplicate",
+    "photos",
+    "exif",
+    "socket.io",
+    "metadata"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2",
+    "exif-parser": "^0.1.12",
+    "googleapis": "^118.0.0",
+    "dotenv": "^16.4.1",
+    "cors": "^2.8.5",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
